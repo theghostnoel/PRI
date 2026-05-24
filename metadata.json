@@ -1,0 +1,6 @@
+{
+  "name": "YouTube Private Player",
+  "description": "Một ứng dụng khách xem video YouTube riêng tư với giao diện tối giản, trực quan và hiện đại.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
