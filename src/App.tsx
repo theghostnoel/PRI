@@ -311,10 +311,10 @@ export default function App() {
       });
     }
 
-    // Let the custom layout clip pointer events
+    // Keep it clickable initially so users can tap the native big play button if autoplay is blocked by browser
     const iframe = document.querySelector(`#video-wrapper iframe`);
     if (iframe) {
-      (iframe as HTMLElement).style.pointerEvents = 'none';
+      (iframe as HTMLElement).style.pointerEvents = 'auto';
     }
 
     setIsPlaying(true);
@@ -325,10 +325,17 @@ export default function App() {
     const state = event.data;
     // YT.PlayerState: UNSTARTED (-1), ENDED (0), PLAYING (1), PAUSED (2), BUFFERING (3), CUED (5)
     
+    const iframe = document.querySelector(`#video-wrapper iframe`);
+    
     // Periodically fetch dynamic title updates if they weren't available immediately
     if (state === 1) { // PLAYING
       setIsPlaying(true);
       startProgressTracker();
+
+      // Lock down iframe pointer events so they can't click YT controls, and shield handles interactions
+      if (iframe) {
+        (iframe as HTMLElement).style.pointerEvents = 'none';
+      }
 
       // Retrieve titles inside gameplay if empty
       if (playerRef.current && playerRef.current.getVideoData) {
@@ -340,6 +347,12 @@ export default function App() {
       }
     } else {
       setIsPlaying(false);
+      
+      // Let pointer events be 'auto' so they can click natively if they want to play, or click native play buttons
+      if (iframe) {
+        (iframe as HTMLElement).style.pointerEvents = 'auto';
+      }
+
       if (state !== 3) { // Not buffering
         stopProgressTracker();
       }
@@ -402,58 +415,127 @@ export default function App() {
 
   // Skip time forward or backward
   const skip = (seconds: number) => {
-    if (!playerRef.current || !playerRef.current.getCurrentTime) return;
-    const curr = playerRef.current.getCurrentTime();
-    const dest = Math.max(0, Math.min(duration, curr + seconds));
-    playerRef.current.seekTo(dest, true);
-    setCurrentTime(dest);
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.getCurrentTime && playerRef.current.seekTo) {
+        const curr = playerRef.current.getCurrentTime() || 0;
+        const dest = Math.max(0, Math.min(duration, curr + seconds));
+        playerRef.current.seekTo(dest, true);
+        setCurrentTime(dest);
+        
+        // Immediate timeline feedback
+        if (!isPlaying) {
+          setTimeout(() => {
+            if (playerRef.current && playerRef.current.getCurrentTime) {
+              setCurrentTime(playerRef.current.getCurrentTime());
+            }
+          }, 150);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to seek video timeframe', e);
+    }
   };
 
   const handleSeek = (val: string) => {
-    if (!playerRef.current || !playerRef.current.seekTo) return;
-    const ratio = parseFloat(val);
-    const dest = (ratio / 100) * duration;
-    playerRef.current.seekTo(dest, true);
-    setCurrentTime(dest);
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.seekTo) {
+        const ratio = parseFloat(val);
+        const dest = (ratio / 100) * duration;
+        playerRef.current.seekTo(dest, true);
+        setCurrentTime(dest);
+      }
+    } catch (e) {
+      console.error('Failed to seek video range', e);
+    }
   };
 
   const togglePlay = () => {
     if (!playerRef.current) return;
-    if (isPlaying) {
-      playerRef.current.pauseVideo();
-      setIsPlaying(false);
-    } else {
-      playerRef.current.playVideo();
-      setIsPlaying(true);
+    try {
+      // Query standard YouTube State to ignore and repair any UI/API desync
+      const playerState = playerRef.current.getPlayerState ? playerRef.current.getPlayerState() : -1;
+      if (playerState === 1 || playerState === 3) {
+        if (playerRef.current.pauseVideo) {
+          playerRef.current.pauseVideo();
+        }
+        setIsPlaying(false);
+      } else {
+        if (playerRef.current.playVideo) {
+          playerRef.current.playVideo();
+        }
+        setIsPlaying(true);
+      }
+    } catch (err) {
+      console.error('Failed to toggle play/pause state', err);
+      if (isPlaying) {
+        try { playerRef.current.pauseVideo?.(); } catch(e){}
+        setIsPlaying(false);
+      } else {
+        try { playerRef.current.playVideo?.(); } catch(e){}
+        setIsPlaying(true);
+      }
     }
   };
 
   const adjustVolume = (v: number) => {
     setVolume(v);
-    if (playerRef.current && playerRef.current.setVolume) {
-      playerRef.current.setVolume(isMuted ? 0 : v);
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.setVolume) {
+        playerRef.current.setVolume(isMuted ? 0 : v);
+      }
+    } catch (e) {
+      console.error('Failed to set player volume', e);
     }
   };
 
   const toggleMute = () => {
     const nextMuted = !isMuted;
     setIsMuted(nextMuted);
-    if (playerRef.current && playerRef.current.setVolume) {
-      playerRef.current.setVolume(nextMuted ? 0 : volume);
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.mute && playerRef.current.unMute) {
+        if (nextMuted) {
+          playerRef.current.mute();
+        } else {
+          playerRef.current.unMute();
+          if (playerRef.current.setVolume) {
+            playerRef.current.setVolume(volume);
+          }
+        }
+      } else if (playerRef.current.setVolume) {
+        playerRef.current.setVolume(nextMuted ? 0 : volume);
+      }
+    } catch (e) {
+      if (playerRef.current.setVolume) {
+        playerRef.current.setVolume(nextMuted ? 0 : volume);
+      }
     }
   };
 
   const adjustSpeed = (speedStr: string) => {
     setPlaybackSpeed(speedStr);
-    if (playerRef.current && playerRef.current.setPlaybackRate) {
-      playerRef.current.setPlaybackRate(parseFloat(speedStr));
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.setPlaybackRate) {
+        playerRef.current.setPlaybackRate(parseFloat(speedStr));
+      }
+    } catch (e) {
+      console.error('Failed to set playback rate', e);
     }
   };
 
   const adjustQuality = (qStr: string) => {
     setQuality(qStr);
-    if (playerRef.current && playerRef.current.setPlaybackQuality) {
-      playerRef.current.setPlaybackQuality(qStr);
+    if (!playerRef.current) return;
+    try {
+      if (playerRef.current.setPlaybackQuality) {
+        playerRef.current.setPlaybackQuality(qStr);
+      }
+    } catch (e) {
+      console.error('Failed to set playback quality', e);
     }
   };
 
@@ -626,7 +708,7 @@ export default function App() {
                 {activeVideoId && (
                   <div 
                     id="click-shield" 
-                    className="absolute inset-0 z-10 cursor-default"
+                    className={`absolute inset-0 z-10 cursor-default ${isPlaying ? 'pointer-events-auto' : 'pointer-events-none'}`}
                     onDoubleClick={toggleFullscreen}
                     onClick={togglePlay}
                     onContextMenu={(e) => e.preventDefault()}
