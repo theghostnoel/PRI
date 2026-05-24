@@ -91,6 +91,8 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [history, setHistory] = useState<VideoHistoryItem[]>([]);
   const [ytApiReady, setYtApiReady] = useState(false);
+  const [isViewOnly, setIsViewOnly] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // References
   const playerRef = useRef<any>(null);
@@ -104,6 +106,26 @@ export default function App() {
     const match = url.match(regExp);
     return match ? match[1] : null;
   };
+
+  // Check URL query parameters for play link
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const playParam = params.get('play');
+    if (playParam) {
+      try {
+        const decodedId = atob(playParam);
+        if (decodedId && decodedId.length === 11) {
+          setIsViewOnly(true);
+          handleLoadVideo(decodedId, 'Luồng phát bảo mật', 'Nội bộ');
+        } else {
+          setErrorMsg('Liên kết mã hóa không hợp lệ hoặc không có cấu trúc đúng.');
+        }
+      } catch (e) {
+        console.error('Không thể tự động giải mã liên kết bảo mật', e);
+        setErrorMsg('Đường dẫn bảo mật không đúng định dạng mã hóa.');
+      }
+    }
+  }, [ytApiReady]);
 
   // On first load, load search history and YouTube script if needed
   useEffect(() => {
@@ -267,27 +289,27 @@ export default function App() {
     // Get info
     const data = targetPlayer.getVideoData();
     let title = 'Video riêng tư';
-    let author = 'Kênh YouTube';
     
     if (data) {
       title = data.title || title;
-      author = data.author || author;
     }
 
     setVideoTitle(title);
-    setVideoAuthor(author);
+    setVideoAuthor('Xem bảo mật');
     
     const dur = targetPlayer.getDuration() || 0;
     setDuration(dur);
 
-    // Add to history
-    addToHistory({
-      id,
-      url: `https://youtube.com/watch?v=${id}`,
-      title,
-      author,
-      timestamp: Date.now()
-    });
+    // Add to history only if not view-only mode
+    if (!isViewOnly) {
+      addToHistory({
+        id,
+        url: `https://youtube.com/watch?v=${id}`,
+        title,
+        author: 'Nguồn bảo vệ',
+        timestamp: Date.now()
+      });
+    }
 
     // Let the custom layout clip pointer events
     const iframe = document.querySelector(`#video-wrapper iframe`);
@@ -313,7 +335,7 @@ export default function App() {
         const info = playerRef.current.getVideoData();
         if (info && info.title && videoTitle === 'Đang tải video...') {
           setVideoTitle(info.title);
-          setVideoAuthor(info.author || 'Kênh YouTube');
+          setVideoAuthor('Xem bảo mật');
         }
       }
     } else {
@@ -454,6 +476,17 @@ export default function App() {
     }
   };
 
+  const handleCopyShareLink = () => {
+    if (!activeVideoId) return;
+    const shareLink = `${window.location.origin}${window.location.pathname}?play=${btoa(activeVideoId)}`;
+    navigator.clipboard.writeText(shareLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(err => {
+      console.error('Không thể sao chép liên kết vào bộ nhớ tạm', err);
+    });
+  };
+
   // Add video item to local history
   const addToHistory = (item: VideoHistoryItem) => {
     setHistory((prev) => {
@@ -543,11 +576,12 @@ export default function App() {
                   <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Core Engine Player
                 </span>
                 <h2 className="text-xl md:text-2xl font-bold font-display text-white mt-1 select-all" title={videoTitle}>
-                  {activeVideoId ? videoTitle : 'Awaiting video source...'}
+                  {activeVideoId ? videoTitle : 'Đang chờ nạp tài nguyên...'}
                 </h2>
-                <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
-                  <span>Tác giả:</span>
-                  <span className="text-rose-400 font-mono font-medium">{activeVideoId ? videoAuthor : 'Chưa tải'}</span>
+                <p className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Trạng thái:</span>
+                  <span className="text-emerald-400 font-mono font-bold">Luồng phát được bảo mật hoàn toàn</span>
                 </p>
               </div>
 
@@ -784,100 +818,102 @@ export default function App() {
           </div>
 
           {/* Bento Block 2: INPUT CONTROLLER CONSOLE (Spans 4 columns) */}
-          <div className="col-span-12 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-700/60 transition-all duration-300 relative overflow-hidden group">
-            
-            <div className="mb-4">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Handler Handshake
-              </span>
-              <h3 className="text-xl font-bold font-display text-white mt-1">Core Input Handler</h3>
-              <p className="text-xs text-slate-400 mt-1">Nạp nguồn tài nguyên streaming YouTube bảo an</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-3.5 my-3">
-              <div className="relative">
-                <input 
-                  type="text"
-                  placeholder="Dán đường dẫn hoặc chuỗi ID video..."
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  className="w-full h-11 pl-3.5 pr-9 rounded-xl bg-black/60 border border-slate-800 text-slate-200 text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500/60 focus:ring-1 focus:ring-rose-500/20 transition-all duration-200"
-                />
-                {urlInput && (
-                  <button 
-                    type="button"
-                    onClick={() => setUrlInput('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors text-sm"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-              <button 
-                type="submit"
-                className="w-full h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-500/10 active:scale-95 transition-all duration-200 flex items-center justify-center gap-2"
-              >
-                <Play className="w-3.5 h-3.5 fill-current text-white" />
-                <span>Nạp Video nguồn</span>
-              </button>
-            </form>
-
-            {/* Error Message Panel */}
-            <AnimatePresence>
-              {errorMsg && (
-                <motion.div 
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[11px] text-rose-400 flex items-start gap-2 overflow-hidden mb-3"
-                >
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
-                  <p className="leading-tight">{errorMsg}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Preset Videos Grid (Bento mini panel) */}
-            <div className="bg-black/40 rounded-2xl border border-slate-800/80 p-4 mt-2">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
-                <Sparkles className="w-3 h-3 text-rose-400" /> Tuyển tập Ambient Thư giãn
-              </span>
+          {!isViewOnly && (
+            <div className="col-span-12 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-700/60 transition-all duration-300 relative overflow-hidden group">
               
-              <div className="grid grid-cols-1 gap-2">
-                {PRESET_VIDEOS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => handleLoadVideo(p.id, p.title, p.author)}
-                    className="w-full p-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-left border border-slate-800/60 hover:border-slate-700/60 transition-all flex items-center justify-between gap-2.5 group/btn"
-                    title={p.title}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className="w-6 h-6 rounded bg-rose-500/10 flex items-center justify-center shrink-0 border border-rose-500/10 group-hover/btn:bg-rose-500/20">
-                        <Youtube className="w-3.5 h-3.5 text-rose-400 fill-current" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold text-slate-200 truncate group-hover/btn:text-rose-400 transition-colors">
-                          {p.title}
-                        </p>
-                        <p className="text-[9px] text-slate-500 truncate">{p.category}</p>
-                      </div>
-                    </div>
-                    <span className="text-[9px] font-mono font-bold text-slate-500 shrink-0 uppercase bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850">Phát</span>
-                  </button>
-                ))}
+              <div className="mb-4">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Handler Handshake
+                </span>
+                <h3 className="text-xl font-bold font-display text-white mt-1">Core Input Handler</h3>
+                <p className="text-xs text-slate-400 mt-1">Nạp nguồn tài nguyên streaming YouTube bảo an</p>
               </div>
-            </div>
 
-            {/* Active System Diagnoses indicator */}
-            <div className="flex gap-2.5 items-center justify-between bg-slate-950/60 p-3 rounded-2xl border border-slate-850 mt-4 text-[10px]">
-              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                <span className="text-slate-400 font-mono font-bold">API PROTOCOL: ACTIVE</span>
+              <form onSubmit={handleSubmit} className="space-y-3.5 my-3">
+                <div className="relative">
+                  <input 
+                    type="text"
+                    placeholder="Dán đường dẫn hoặc chuỗi ID video..."
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    className="w-full h-11 pl-3.5 pr-9 rounded-xl bg-black/60 border border-slate-800 text-slate-200 text-xs placeholder-slate-500 focus:outline-none focus:border-rose-500/60 focus:ring-1 focus:ring-rose-500/20 transition-all duration-200"
+                  />
+                  {urlInput && (
+                    <button 
+                      type="button"
+                      onClick={() => setUrlInput('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors text-sm"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full h-11 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-500/10 active:scale-95 transition-all duration-200 flex items-center justify-center gap-2"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current text-white" />
+                  <span>Nạp Video nguồn</span>
+                </button>
+              </form>
+
+              {/* Error Message Panel */}
+              <AnimatePresence>
+                {errorMsg && (
+                  <motion.div 
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-[11px] text-rose-400 flex items-start gap-2 overflow-hidden mb-3"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
+                    <p className="leading-tight">{errorMsg}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Preset Videos Grid (Bento mini panel) */}
+              <div className="bg-black/40 rounded-2xl border border-slate-800/80 p-4 mt-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5 mb-3">
+                  <Sparkles className="w-3 h-3 text-rose-400" /> Tuyển tập Ambient Thư giãn
+                </span>
+                
+                <div className="grid grid-cols-1 gap-2">
+                  {PRESET_VIDEOS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleLoadVideo(p.id, p.title, p.author)}
+                      className="w-full p-2.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 text-left border border-slate-800/60 hover:border-slate-700/60 transition-all flex items-center justify-between gap-2.5 group/btn"
+                      title={p.title}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded bg-rose-500/10 flex items-center justify-center shrink-0 border border-rose-500/10 group-hover/btn:bg-rose-500/20">
+                          <Youtube className="w-3.5 h-3.5 text-rose-400 fill-current" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-bold text-slate-200 truncate group-hover/btn:text-rose-400 transition-colors">
+                            {p.title}
+                          </p>
+                          <p className="text-[9px] text-slate-500 truncate">{p.category}</p>
+                        </div>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold text-slate-500 shrink-0 uppercase bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850">Phát</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <span className="text-slate-500 font-mono">STABLE GATEWAY</span>
+
+              {/* Active System Diagnoses indicator */}
+              <div className="flex gap-2.5 items-center justify-between bg-slate-950/60 p-3 rounded-2xl border border-slate-850 mt-4 text-[10px]">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-slate-400 font-mono font-bold">API PROTOCOL: ACTIVE</span>
+                </div>
+                <span className="text-slate-500 font-mono">STABLE GATEWAY</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Bento Block 3: QUICK BRIGHT CONFIG - HOTKEY CARD (Spans 4 columns) */}
           <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-gradient-to-br from-rose-600 via-red-600 to-amber-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden flex flex-col justify-between group">
@@ -920,86 +956,182 @@ export default function App() {
           </div>
 
           {/* Bento Block 4: HISTORICAL DATA ENGINE (Spans 4 columns) */}
-          <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-700/60 transition-all duration-300 relative">
-            
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Local History Logs
-                  </span>
-                  <h3 className="text-xl font-bold font-display text-white mt-1">Lịch sử xem</h3>
-                </div>
-                {history.length > 0 && (
-                  <button 
-                    onClick={clearHistory}
-                    className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-850"
-                  >
-                    <Trash2 className="w-3 h-3 text-rose-500" />
-                    <span>Dọn sạch</span>
-                  </button>
-                )}
-              </div>
-
-              {/* History stack container */}
-              <div className="my-3 font-mono text-xs text-slate-300">
-                {history.length === 0 ? (
-                  <div className="py-12 px-4 rounded-2xl bg-black/30 border border-slate-800/80 flex flex-col items-center justify-center text-center gap-2.5">
-                    <Clock className="w-7 h-7 text-slate-600 animate-pulse" />
-                    <p className="text-xs font-semibold text-slate-400">Chưa ghi nhận video</p>
-                    <p className="text-[10px] text-slate-600 max-w-[200px] leading-tight">Video đã phát sẽ hiển thị tự động tại đây để bạn truy xuất nhanh lần sau.</p>
+          {!isViewOnly && (
+            <div className="col-span-12 md:col-span-6 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 rounded-3xl p-6 shadow-xl flex flex-col justify-between hover:border-slate-700/60 transition-all duration-300 relative">
+              
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> Local History Logs
+                    </span>
+                    <h3 className="text-xl font-bold font-display text-white mt-1">Lịch sử xem</h3>
                   </div>
-                ) : (
-                  <div className="flex flex-col gap-2 max-h-[178px] overflow-y-auto pr-1">
-                    {history.map((h) => (
-                      <div 
-                        key={`${h.id}-${h.timestamp}`}
-                        className="group bg-slate-950 hover:bg-slate-950/40 rounded-xl p-2.5 border border-slate-850 flex items-start gap-2.5 transition-all relative overflow-hidden"
-                      >
-                        <button 
-                          onClick={() => handleLoadVideo(h.id, h.title, h.author)}
-                          className="absolute inset-0 z-10 w-full h-full text-left cursor-pointer"
-                          aria-label={`Play ${h.title}`}
-                        />
-                        
-                        <div className="w-7 h-7 rounded bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 z-20 group-hover:border-rose-500/20 transition-all">
-                          <Youtube className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-500 transition-colors" />
-                        </div>
+                  {history.length > 0 && (
+                    <button 
+                      onClick={clearHistory}
+                      className="text-[10px] text-slate-500 hover:text-rose-400 transition-colors flex items-center gap-1 bg-slate-950 p-1.5 rounded-lg border border-slate-850"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-500" />
+                      <span>Dọn sạch</span>
+                    </button>
+                  )}
+                </div>
 
-                        <div className="flex-1 min-w-0 z-20">
-                          <p className="text-[11px] font-bold text-slate-200 truncate group-hover:text-rose-400 transition-colors">
-                            {h.title}
-                          </p>
-                          <div className="flex items-center justify-between text-[9px] text-slate-500 mt-1 font-sans">
-                            <span className="truncate">{h.author}</span>
-                            <span className="shrink-0 font-mono text-slate-600">{new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                {/* History stack container */}
+                <div className="my-3 font-mono text-xs text-slate-300">
+                  {history.length === 0 ? (
+                    <div className="py-12 px-4 rounded-2xl bg-black/30 border border-slate-800/80 flex flex-col items-center justify-center text-center gap-2.5">
+                      <Clock className="w-7 h-7 text-slate-600 animate-pulse" />
+                      <p className="text-xs font-semibold text-slate-400">Chưa ghi nhận video</p>
+                      <p className="text-[10px] text-slate-600 max-w-[200px] leading-tight">Video đã phát sẽ hiển thị tự động tại đây để bạn truy xuất nhanh lần sau.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-[178px] overflow-y-auto pr-1">
+                      {history.map((h) => (
+                        <div 
+                          key={`${h.id}-${h.timestamp}`}
+                          className="group bg-slate-950 hover:bg-slate-950/40 rounded-xl p-2.5 border border-slate-850 flex items-start gap-2.5 transition-all relative overflow-hidden"
+                        >
+                          <button 
+                            onClick={() => handleLoadVideo(h.id, h.title, h.author)}
+                            className="absolute inset-0 z-10 w-full h-full text-left cursor-pointer"
+                            aria-label={`Play ${h.title}`}
+                          />
+                          
+                          <div className="w-7 h-7 rounded bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 z-20 group-hover:border-rose-500/20 transition-all">
+                            <Youtube className="w-3.5 h-3.5 text-slate-500 group-hover:text-rose-500 transition-colors" />
+                          </div>
+
+                          <div className="flex-1 min-w-0 z-20">
+                            <p className="text-[11px] font-bold text-slate-200 truncate group-hover:text-rose-400 transition-colors">
+                              {h.title}
+                            </p>
+                            <div className="flex items-center justify-between text-[9px] text-slate-500 mt-1 font-sans">
+                              <span className="truncate">Hệ thống bảo vệ</span>
+                              <span className="shrink-0 font-mono text-slate-600">{new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-3.5 mt-3 flex items-start gap-2.5">
+                <Shield className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+                <p className="text-[10px] text-slate-400 leading-normal">
+                  Ứng dụng chỉ lưu trữ cục bộ tạm thời (cookie-less). Mọi hành tung không phân tích lưu trữ về máy chủ.
+                </p>
               </div>
             </div>
+          )}
 
-            <div className="bg-rose-500/5 border border-rose-500/10 rounded-2xl p-3.5 mt-3 flex items-start gap-2.5">
-              <Shield className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-              <p className="text-[10px] text-slate-400 leading-normal">
-                Ứng dụng chỉ lưu trữ cục bộ tạm thời (cookie-less). Mọi hành tung không phân tích lưu trữ về máy chủ.
-              </p>
-            </div>
-          </div>
+          {/* Bento Block 5: DYNAMIC ACCORDING TO VIEW MODE */}
 
-          {/* Bento Block 5: ADD COMPONENT BOX (Spans 4 columns) */}
-          <div className="col-span-12 md:col-span-12 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 border-dashed border-2 rounded-3xl p-6 flex flex-col justify-center items-center gap-3 opacity-60 hover:opacity-100 transition-all duration-300">
-            <div className="w-12 h-12 border border-slate-700/80 rounded-full flex items-center justify-center bg-slate-950 shadow-inner">
-              <Sparkles className="w-5 h-5 text-indigo-400" />
+          {/* A. If ADMIN Owner view and has active video: Show share generator */}
+          {!isViewOnly && activeVideoId && (
+            <div className="col-span-12 md:col-span-12 lg:col-span-4 bg-gradient-to-br from-indigo-950/60 to-[#0c0819] border border-indigo-500/30 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl group-hover:scale-110 transition-all pointer-events-none" />
+              
+              <div>
+                <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Secure Share Link
+                </span>
+                <h3 className="text-xl font-bold font-display text-white mt-1">Chia sẻ video bảo mật</h3>
+                <p className="text-xs text-slate-400 mt-1">Gửi liên kết mã hóa cho học viên học tập tập trung</p>
+              </div>
+
+              <div className="my-4 space-y-3">
+                <div className="relative">
+                  <input 
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}${window.location.pathname}?play=${btoa(activeVideoId)}`}
+                    className="w-full h-10 px-3.5 rounded-xl bg-black/60 border border-slate-800 text-indigo-300 text-[11px] font-mono select-all focus:outline-none focus:border-indigo-500/50"
+                  />
+                </div>
+                <button 
+                  onClick={handleCopyShareLink}
+                  className={`w-full h-11 text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2 active:scale-95 ${
+                    copied 
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-550/10' 
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/10'
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>ĐÃ SAO CHÉP LIÊN KẾT!</span>
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-4 h-4" />
+                      <span>SAO CHÉP LIÊN KẾT XEM</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="bg-indigo-500/5 border border-indigo-500/10 rounded-2xl p-3.5 text-[10px] text-slate-400 leading-normal flex items-start gap-2">
+                <Shield className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <span>Người học nhận liên kết này sẽ chỉ thấy trình phát bảo mật của website. Liên kết YouTube gốc, kênh phân phối, bình luận hay quảng cáo rác hoàn toàn bị chặn để bảo đảm an toàn.</span>
+              </div>
             </div>
-            <div className="text-center">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-widest font-mono">Custom widgets</span>
-              <p className="text-[11px] text-slate-500 mt-1 max-w-[200px] leading-snug">Hệ trình chiếu riêng tư luôn sẵn sàng tiếp nhận.</p>
+          )}
+
+          {/* B. If VIEWER view-only mode: Show secure environment info and exit option */}
+          {isViewOnly && (
+            <div className="col-span-12 lg:col-span-4 bg-gradient-to-br from-slate-900/40 to-neutral-950 border border-emerald-500/20 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl group-hover:scale-110 transition-all pointer-events-none" />
+              
+              <div>
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-emerald-400" /> Viewer Mode Shielded
+                </span>
+                <h3 className="text-xl font-bold font-display text-white mt-1">Trình xem bọc bảo mật</h3>
+                <p className="text-xs text-slate-400 mt-1">Môi trường xem tập trung, lọc sạch sao nhãng</p>
+              </div>
+
+              <div className="my-5 p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10 text-[11px] text-slate-300 leading-loose space-y-2">
+                <p className="font-semibold text-emerald-400 flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-400" /> Đã ẩn địa chỉ liên kết YouTube gốc
+                </p>
+                <p className="font-semibold text-emerald-400 flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-400" /> Đã chặn bình luận và đề xuất rác
+                </p>
+                <p className="font-semibold text-emerald-400 flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-400" /> Đã bọc mã hóa danh tính nguồn phát
+                </p>
+              </div>
+
+              <button 
+                onClick={() => {
+                  window.history.pushState({}, '', window.location.pathname);
+                  setIsViewOnly(false);
+                  setActiveVideoId(null);
+                  setVideoTitle('');
+                }}
+                className="w-full h-11 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-inner"
+              >
+                Về Trang Chủ Độc Bản
+              </button>
             </div>
-          </div>
+          )}
+
+          {/* C. Default state when not in viewOnly and no video loaded: Show guides */}
+          {!isViewOnly && !activeVideoId && (
+            <div className="col-span-12 md:col-span-12 lg:col-span-4 bg-slate-900/90 border border-slate-800/80 border-dashed border-2 rounded-3xl p-6 flex flex-col justify-center items-center gap-3 opacity-60 hover:opacity-100 transition-all duration-300">
+              <div className="w-12 h-12 border border-slate-700/80 rounded-full flex items-center justify-center bg-slate-950 shadow-inner">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+              </div>
+              <div className="text-center">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-widest font-mono">Custom Link Generator</span>
+                <p className="text-[11px] text-slate-500 mt-1 max-w-[200px] leading-snug">Nạp video nguồn để tạo liên kết phân phối mã hóa bảo mật tức thì.</p>
+              </div>
+            </div>
+          )}
 
         </div>
 
